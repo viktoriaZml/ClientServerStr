@@ -1,32 +1,35 @@
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 
 public class Server {
   public static void main(String[] args) throws IOException {
     // Занимаем порт, определяя серверный сокет
-    ServerSocket servSocket = new ServerSocket(23444);
+    final ServerSocketChannel serverChannel = ServerSocketChannel.open();
+    serverChannel.bind(new InetSocketAddress("localhost", 23334));
     while (true) {
       // Ждем подключения клиента и получаем потоки для дальнейшей работы
-      try (Socket socket = servSocket.accept();
-           PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-           BufferedReader in = new BufferedReader(new
-                   InputStreamReader(socket.getInputStream()))) {
-        String line;
-        while ((line = in.readLine()) != null) {
-          // Выход если от клиента получили end
-          if (line.equals("end")) {
-            break;
-          } else {
-            // Пишем ответ
-            out.println(extraTrim(line));
-          }
+      try (SocketChannel socketChannel = serverChannel.accept()) {
+        // Определяем буфер для получения данных
+        final ByteBuffer inputBuffer = ByteBuffer.allocate(2 << 10);
+        while (socketChannel.isConnected()) {
+          // читаем данные из канала в буфер
+          int bytesCount = socketChannel.read(inputBuffer);
+          // если из потока читать нельзя, перестаем работать с этим клиентом
+          if (bytesCount == -1) break;
+          // получаем переданную от клиента строку в нужной кодировке и очищаем буфер
+          final String msg = new String(inputBuffer.array(), 0, bytesCount,
+                  StandardCharsets.UTF_8);
+          inputBuffer.clear();
+          System.out.println("Получено от клиента: " + msg);
+          // отправляем результат
+          socketChannel.write(ByteBuffer.wrap((extraTrim(msg)).getBytes(StandardCharsets.UTF_8)));
         }
-      } catch (IOException ex) {
-        ex.printStackTrace(System.out);
+      } catch (IOException err) {
+        System.out.println(err.getMessage());
       }
     }
   }
